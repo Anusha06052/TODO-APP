@@ -1,4 +1,4 @@
-# PRD — AI-Powered Task Suggestion System
+# PRD 
 
 **Status:** Draft  
 **Date:** 2026-04-01  
