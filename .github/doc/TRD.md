@@ -1,4 +1,4 @@
-# TRD — AI-Powered Task Suggestion System
+# TRD 
 
 **Status:** Draft  
 **Date:** 2026-04-01  
