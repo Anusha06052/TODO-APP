@@ -1,9 +1,12 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.core.config import settings
+from app.config import settings
+from app.routes.health import router as health_router
+from app.routes.todos import router as todos_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,12 +28,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health_router)
+app.include_router(todos_router, prefix="/api")
 
-@app.get("/health", tags=["health"])
-async def health_check() -> dict[str, str]:
-    """Health check endpoint.
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all handler for unhandled exceptions.
+
+    Args:
+        request: The incoming HTTP request.
+        exc: The unhandled exception.
 
     Returns:
-        A dict with a status key confirming the API is reachable.
+        A 500 JSON response with a generic error message.
     """
-    return {"status": "ok"}
+    logger.error("Unhandled exception: %s", exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
