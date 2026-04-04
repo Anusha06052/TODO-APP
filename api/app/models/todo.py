@@ -64,7 +64,7 @@ class Todo(Base):
     created_at: Mapped[object] = mapped_column(
         DATETIME2,
         nullable=False,
-        server_default=func.now(),
+        server_default=func.getutcdate(),
         comment="UTC timestamp of record creation (set by database).",
     )
 
@@ -72,8 +72,8 @@ class Todo(Base):
     updated_at: Mapped[object] = mapped_column(
         DATETIME2,
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        server_default=func.getutcdate(),
+        onupdate=func.getutcdate(),
         comment="UTC timestamp of last update (maintained by database/ORM).",
     )
 

@@ -1,64 +1,118 @@
-"""Pydantic schemas for the Todo resource.
+"""Pydantic v2 schemas for the Todo resource.
 
-Three separate schema classes model the three main use-cases:
+Four schema classes cover every use-case:
 
-* :class:`TodoCreate`   — fields accepted when creating a new todo.
-* :class:`TodoUpdate`   — all-optional fields for a PATCH operation.
+* :class:`TodoBase`     — shared, validated fields inherited by Create/Response.
+* :class:`TodoCreate`   — fields accepted when creating a new todo (POST body).
+* :class:`TodoUpdate`   — all-optional fields for a partial update (PATCH body).
 * :class:`TodoResponse` — the full representation returned to clients.
 """
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class TodoCreate(BaseModel):
-    """Validated payload for creating a new todo.
+class TodoBase(BaseModel):
+    """Shared, validated fields for the Todo resource.
+
+    Inherited by :class:`TodoCreate` and :class:`TodoResponse` to avoid
+    duplicating field definitions and validators.
 
     Attributes:
-        title: Short label for the todo (1–200 characters).
+        title: Short label for the todo (1–200 non-whitespace characters).
         description: Optional longer description (max 1 000 characters).
     """
 
     title: str = Field(..., min_length=1, max_length=200)
-    description: str | None = Field(None, max_length=1000)
+    description: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        """Reject titles that consist entirely of whitespace.
+
+        Args:
+            value: The raw title string supplied by the caller.
+
+        Returns:
+            The stripped title string when it contains visible characters.
+
+        Raises:
+            ValueError: If the title is blank or contains only whitespace.
+        """
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("title must not be blank or contain only whitespace")
+        return stripped
+
+
+class TodoCreate(TodoBase):
+    """Validated payload for creating a new todo (POST body).
+
+    Inherits ``title`` and ``description`` from :class:`TodoBase` with all
+    their constraints.  No additional fields are required at creation time.
+    """
 
 
 class TodoUpdate(BaseModel):
-    """Validated payload for partially updating an existing todo.
+    """Validated payload for partially updating an existing todo (PATCH body).
 
     All fields are optional — only the fields present in the request body are
-    applied to the stored record.
+    applied to the stored record.  Clients may omit any field they do not wish
+    to change.
 
     Attributes:
-        title: Replacement title (1–200 characters).
-        description: Replacement description (max 1 000 characters); pass
+        title: Replacement title (1–200 non-whitespace characters).
+        description: Replacement description (max 1 000 characters); send
             ``null`` to clear the field.
         is_completed: New completion state.
     """
 
-    title: str | None = Field(None, min_length=1, max_length=200)
-    description: str | None = Field(None, max_length=1000)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
     is_completed: bool | None = None
 
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str | None) -> str | None:
+        """Reject titles that consist entirely of whitespace when provided.
 
-class TodoResponse(BaseModel):
+        Args:
+            value: The raw title string supplied by the caller, or ``None``
+                when the field is omitted from the PATCH body.
+
+        Returns:
+            The stripped title string, or ``None`` when the field was omitted.
+
+        Raises:
+            ValueError: If a non-null title is blank or contains only whitespace.
+        """
+        if value is None:
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("title must not be blank or contain only whitespace")
+        return stripped
+
+
+class TodoResponse(TodoBase):
     """Full todo representation returned by the API.
+
+    Extends :class:`TodoBase` with server-assigned fields that are not present
+    in create/update payloads.  ``from_attributes=True`` allows direct
+    construction from SQLAlchemy ORM model instances.
 
     Attributes:
         id: Auto-assigned primary key.
-        title: Short label of the todo.
-        description: Optional longer description.
-        is_completed: Whether the todo has been completed.
-        created_at: UTC timestamp of record creation.
-        updated_at: UTC timestamp of the most recent update.
+        is_completed: Whether the todo has been marked as done.
+        created_at: UTC timestamp set automatically on INSERT.
+        updated_at: UTC timestamp set automatically on INSERT and every UPDATE.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    title: str
-    description: str | None
     is_completed: bool
     created_at: datetime
     updated_at: datetime

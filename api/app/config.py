@@ -29,9 +29,7 @@ class Settings(BaseSettings):
         validation_alias="CORS_ORIGINS",
     )
 
-    # AI
-    openai_api_key: str = Field(..., validation_alias="OPENAI_API_KEY")
-
+   
     @property
     def database_url(self) -> str:
         """Build the async aioodbc connection string.
@@ -40,9 +38,8 @@ class Settings(BaseSettings):
             SQLAlchemy-compatible async connection URL for SQL Server.
         """
         return (
-            f"mssql+aioodbc://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
-            "?driver=ODBC+Driver+17+for+SQL+Server&TrustServerCertificate=yes"
+            f"mssql+aioodbc://@{self.db_host}/{self.db_name}"
+            f"?driver=ODBC+Driver+17+for+SQL+Server&TrustServerCertificate=yes"
         )
 
 
