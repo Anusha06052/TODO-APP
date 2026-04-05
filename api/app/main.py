@@ -29,7 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
-app.include_router(todos_router, prefix="/api")
+app.include_router(todos_router)
 
 
 @app.exception_handler(Exception)
