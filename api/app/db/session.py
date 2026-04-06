@@ -18,7 +18,7 @@ try:
 except ValidationError as exc: # Log a warning if the database URL cannot be constructed due to missing environment variables, and re-raise the exception to prevent the application from starting with an invalid configuration
     logger.warning(
         "DATABASE_URL could not be constructed — one or more required environment "
-        "variables (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD) are not set. "
+        "variables (DB_HOST, DB_NAME) are not set. "
         "Check your .env file.\n%s",
         exc,
     ) # Log the specific validation error for debugging purposes

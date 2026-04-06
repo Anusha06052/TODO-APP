@@ -1,8 +1,7 @@
 """Business logic layer for the Todo resource.
 
 This module contains :class:`TodoService`, which enforces all domain rules for
-Todo operations, and the FastAPI dependency function :func:`get_todo_service`
-used to wire everything together via ``Depends()``.
+Todo operations.  Dependency wiring lives in :mod:`app.dependencies.todo`.
 
 Layer responsibilities:
 - Validate business rules (e.g. raise 404 when a todo does not exist).
@@ -13,10 +12,9 @@ Layer responsibilities:
 
 import logging
 
-from fastapi import Depends, HTTPException, status
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
 from app.models.todo import Todo
 from app.repositories.todo_repository import TodoRepository
 from app.schemas.todo import TodoCreate, TodoUpdate
@@ -144,26 +142,3 @@ class TodoService:
         await self.repo.delete(todo)
         await self.repo.db.commit()
         logger.info("delete_todo: deleted todo id=%d", todo_id)
-
-
-async def get_todo_service(
-    db: AsyncSession = Depends(get_db),
-) -> TodoService:
-    """FastAPI dependency that wires ``TodoRepository`` and ``TodoService``.
-
-    Constructs a :class:`TodoRepository` from the injected
-    :class:`~sqlalchemy.ext.asyncio.AsyncSession`, then wraps it in a
-    :class:`TodoService`.  Intended for use with ``Depends()`` in route
-    handlers::
-
-        async def list_todos(
-            service: Annotated[TodoService, Depends(get_todo_service)],
-        ) -> list[TodoResponse]: ...
-
-    Args:
-        db: An async database session provided by :func:`~app.db.session.get_db`.
-
-    Returns:
-        A fully configured :class:`TodoService` instance.
-    """
-    return TodoService(TodoRepository(db))

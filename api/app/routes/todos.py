@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, Response, status
 from typing import Annotated
 
 from app.schemas.todo import TodoCreate, TodoResponse, TodoUpdate
-from app.services.todo_service import TodoService, get_todo_service
+from app.services.todo_service import TodoService
+from app.dependencies.todo import get_todo_service
 
 logger = logging.getLogger(__name__)
 

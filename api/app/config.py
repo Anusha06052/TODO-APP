@@ -18,10 +18,7 @@ class Settings(BaseSettings):
 
     # Database
     db_host: str = Field(..., validation_alias="DB_HOST")
-    db_port: int = Field(1433, validation_alias="DB_PORT")
     db_name: str = Field(..., validation_alias="DB_NAME")
-    db_user: str = Field(..., validation_alias="DB_USER")
-    db_password: str = Field(..., validation_alias="DB_PASSWORD")
 
     # CORS
     cors_origins: list[str] = Field(
@@ -38,8 +35,7 @@ class Settings(BaseSettings):
             SQLAlchemy-compatible async connection URL for SQL Server.
         """
         return (
-            f"mssql+aioodbc://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            f"mssql+aioodbc://@{self.db_host}/{self.db_name}"
             f"?driver=ODBC+Driver+17+for+SQL+Server&TrustServerCertificate=yes"
         )
 
