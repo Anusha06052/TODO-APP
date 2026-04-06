@@ -1,0 +1,20 @@
+[tool.pytest.ini_options]
+# asyncio_mode = "auto" instructs pytest-asyncio to automatically treat every
+# async test function as an asyncio coroutine, removing the need to decorate
+# each one with @pytest.mark.asyncio.  This is the recommended setting for
+# FastAPI / SQLAlchemy async test suites where virtually every test is async.
+asyncio_mode = "auto"
+
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+
+addopts = [
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-fail-under=80",
+]
+
+log_cli = true
+log_cli_level = "DEBUG"
