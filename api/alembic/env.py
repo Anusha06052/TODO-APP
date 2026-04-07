@@ -24,6 +24,7 @@ load_dotenv()
 # Import Base and every model so autogenerate detects all table changes.
 from app.db.base import Base  # noqa: E402
 import app.models.todo  # noqa: F401, E402 — side-effect: registers Todo on Base.metadata
+import app.models.category  # noqa: F401, E402 — side-effect: registers Category on Base.metadata
 
 # Alembic Config object — gives access to values in alembic.ini.
 config = context.config

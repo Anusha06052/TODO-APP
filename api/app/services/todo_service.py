@@ -94,6 +94,7 @@ class TodoService:
         todo = await self.repo.create(data)
         await self.repo.db.commit()
         await self.repo.db.refresh(todo)
+        await self.repo.db.refresh(todo, attribute_names=["category"])
         logger.info("create_todo: created todo id=%d", todo.id)
         return todo
 
@@ -120,6 +121,7 @@ class TodoService:
         todo = await self.repo.update(todo, data)
         await self.repo.db.commit()
         await self.repo.db.refresh(todo)
+        await self.repo.db.refresh(todo, attribute_names=["category"])
         logger.info("update_todo: updated todo id=%d fields=%s", todo_id, data.model_fields_set)
         return todo
 

@@ -8,9 +8,11 @@ All models are imported here so that:
     from app.models import Todo
 """
 
+from app.models.category import Category  # noqa: F401
 from app.models.todo import Todo  # noqa: F401
 
 __all__ = [
+    "Category",
     "Todo",
 ]
 

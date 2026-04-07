@@ -1,8 +1,13 @@
 import { useGetTodos } from '@/hooks/useTodos';
+import type { Todo } from '@/types';
 
 import { TodoItem } from './TodoItem';
 
-const TodoList = () => {
+interface TodoListProps {
+  onEdit: (todo: Todo) => void;
+}
+
+const TodoList = ({ onEdit }: TodoListProps) => {
   const { data: todos, isLoading, isError } = useGetTodos();
 
   if (isLoading) {
@@ -32,7 +37,7 @@ const TodoList = () => {
   return (
     <ul className="flex flex-col gap-2" aria-label="Todo list">
       {todos.map((todo) => (
-        <TodoItem key={todo.id} todo={todo} />
+        <TodoItem key={todo.id} todo={todo} onEdit={onEdit} />
       ))}
     </ul>
   );

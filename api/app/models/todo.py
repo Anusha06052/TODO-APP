@@ -1,14 +1,15 @@
 """ORM model for the ``todos`` table.
 
-Represents a single to-do item persisted in SQL Server.  No relationships are
-defined here; the optional category association is added in Phase 3.
+Represents a single to-do item persisted in SQL Server.
+The optional ``category_id`` foreign key links a todo to a
+:class:`~app.models.category.Category` record.
 """
 
 import logging
 
-from sqlalchemy import Boolean, func
+from sqlalchemy import Boolean, ForeignKey, func
 from sqlalchemy.dialects.mssql import DATETIME2, NVARCHAR
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -49,6 +50,23 @@ class Todo(Base):
         NVARCHAR(1000),
         nullable=True,
         comment="Optional longer description (max 1 000 characters).",
+    )
+
+    # Foreign key to categories (nullable — a todo need not belong to any category).
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="FK to categories.id; NULL when no category is assigned.",
+    )
+
+    # Many-to-one: a todo optionally belongs to one category.
+    # lazy="raise" prevents accidental sync lazy-loads in async context;
+    # all callers must eagerly load this relationship via selectinload().
+    category: Mapped["Category | None"] = relationship(  # type: ignore[name-defined]
+        "Category",
+        back_populates="todos",
+        lazy="raise",
     )
 
     # Completion flag: defaults to False on creation.
