@@ -6,6 +6,7 @@ export interface Todo {
   title: string;
   description: string | null;
   is_completed: boolean;
+  category_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -13,10 +14,12 @@ export interface Todo {
 /**
  * Payload for creating a new Todo item.
  * `description` is optional; omitting it is treated the same as passing null.
+ * `category_id` is optional; links the todo to an existing category.
  */
 export interface CreateTodoDto {
   title: string;
   description?: string | null;
+  category_id?: number | null;
 }
 
 /**
@@ -27,6 +30,7 @@ export interface UpdateTodoDto {
   title?: string;
   description?: string | null;
   is_completed?: boolean;
+  category_id?: number | null;
 }
 
 /**

@@ -16,6 +16,7 @@ const createTodo = (overrides: Partial<Todo> = {}): Todo => ({
   title: 'Test todo',
   description: null,
   is_completed: false,
+  category_id: null,
   created_at: '2026-04-06T00:00:00Z',
   updated_at: '2026-04-06T00:00:00Z',
   ...overrides,
@@ -34,9 +35,12 @@ const mockUseGetTodos = (overrides: Partial<ReturnType<typeof useGetTodos>> = {}
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
+const onEdit = vi.fn();
+
 describe('TodoList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    onEdit.mockReset();
     vi.mocked(TodoItem).mockImplementation(({ todo }) => (
       <li data-testid="todo-item">{todo.title}</li>
     ));
@@ -46,7 +50,7 @@ describe('TodoList', () => {
     it('renders a loading indicator while fetching', () => {
       mockUseGetTodos({ isLoading: true });
 
-      render(<TodoList />);
+      render(<TodoList onEdit={onEdit} />);
 
       expect(screen.getByRole('status')).toBeInTheDocument();
     });
@@ -56,7 +60,7 @@ describe('TodoList', () => {
     it('renders an error message when the request fails', () => {
       mockUseGetTodos({ isError: true });
 
-      render(<TodoList />);
+      render(<TodoList onEdit={onEdit} />);
 
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
@@ -66,7 +70,7 @@ describe('TodoList', () => {
     it('renders "No todos yet" message when todos array is empty', () => {
       mockUseGetTodos({ data: [] });
 
-      render(<TodoList />);
+      render(<TodoList onEdit={onEdit} />);
 
       expect(screen.getByText(/no todos yet/i)).toBeInTheDocument();
     });
@@ -81,7 +85,7 @@ describe('TodoList', () => {
       ];
       mockUseGetTodos({ data: todos });
 
-      render(<TodoList />);
+      render(<TodoList onEdit={onEdit} />);
 
       expect(screen.getAllByTestId('todo-item')).toHaveLength(3);
     });
@@ -93,7 +97,7 @@ describe('TodoList', () => {
       ];
       mockUseGetTodos({ data: todos });
 
-      render(<TodoList />);
+      render(<TodoList onEdit={onEdit} />);
 
       expect(vi.mocked(TodoItem)).toHaveBeenNthCalledWith(
         1,

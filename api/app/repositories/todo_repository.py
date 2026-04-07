@@ -9,6 +9,7 @@ Service layer.
 import logging
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.todo import Todo
@@ -46,7 +47,7 @@ class TodoRepository:
             is empty.
         """
         result = await self.db.execute(
-            select(Todo).order_by(Todo.created_at.desc())
+            select(Todo).options(selectinload(Todo.category)).order_by(Todo.created_at.desc())
         )
         todos = list(result.scalars().all())
         logger.debug("get_all returned %d todo(s)", len(todos))
@@ -63,7 +64,7 @@ class TodoRepository:
             when no row with that ``id`` exists.
         """
         result = await self.db.execute(
-            select(Todo).where(Todo.id == todo_id)
+            select(Todo).options(selectinload(Todo.category)).where(Todo.id == todo_id)
         )
         todo = result.scalar_one_or_none()
         logger.debug("get_by_id(%d) → %s", todo_id, "found" if todo else "not found")
@@ -90,12 +91,13 @@ class TodoRepository:
         db_todo = Todo(
             title=todo.title,
             description=todo.description,
+            category_id=todo.category_id,
         )
         self.db.add(db_todo)
         # Flush to send the INSERT to the DB and populate server-side defaults
         # (id, created_at, updated_at) without committing the transaction.
         await self.db.flush()
-        await self.db.refresh(db_todo)
+        await self.db.refresh(db_todo, attribute_names=["category"])
         logger.debug("create → new todo id=%d", db_todo.id)
         return db_todo
 
@@ -129,7 +131,7 @@ class TodoRepository:
             setattr(todo, field, getattr(data, field))
 
         await self.db.flush()
-        await self.db.refresh(todo)
+        await self.db.refresh(todo, attribute_names=["category"])
         logger.debug("update → todo id=%d fields=%s", todo.id, data.model_fields_set)
         return todo
 

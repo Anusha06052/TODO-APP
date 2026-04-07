@@ -5,12 +5,15 @@ Four schema classes cover every use-case:
 * :class:`TodoBase`     — shared, validated fields inherited by Create/Response.
 * :class:`TodoCreate`   — fields accepted when creating a new todo (POST body).
 * :class:`TodoUpdate`   — all-optional fields for a partial update (PATCH body).
-* :class:`TodoResponse` — the full representation returned to clients.
+* :class:`TodoResponse` — the full representation returned to clients, including
+                          optional nested :class:`~app.schemas.category.CategoryResponse`.
 """
 
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.category import CategoryResponse
 
 
 class TodoBase(BaseModel):
@@ -22,10 +25,12 @@ class TodoBase(BaseModel):
     Attributes:
         title: Short label for the todo (1–200 non-whitespace characters).
         description: Optional longer description (max 1 000 characters).
+        category_id: Optional FK linking the todo to a category.
     """
 
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
+    category_id: int | None = Field(default=None, ge=1)
 
     @field_validator("title")
     @classmethod
@@ -67,11 +72,13 @@ class TodoUpdate(BaseModel):
         description: Replacement description (max 1 000 characters); send
             ``null`` to clear the field.
         is_completed: New completion state.
+        category_id: Replacement category FK; send ``null`` to unassign.
     """
 
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
     is_completed: bool | None = None
+    category_id: int | None = Field(default=None, ge=1)
 
     @field_validator("title")
     @classmethod
@@ -108,6 +115,8 @@ class TodoResponse(TodoBase):
         is_completed: Whether the todo has been marked as done.
         created_at: UTC timestamp set automatically on INSERT.
         updated_at: UTC timestamp set automatically on INSERT and every UPDATE.
+        category: Nested category representation; ``None`` when no category is
+            assigned or the category has been soft-deleted.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -116,3 +125,4 @@ class TodoResponse(TodoBase):
     is_completed: bool
     created_at: datetime
     updated_at: datetime
+    category: CategoryResponse | None = None

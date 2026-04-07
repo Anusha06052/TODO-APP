@@ -15,6 +15,7 @@ const createTodo = (overrides: Partial<Todo> = {}): Todo => ({
   title: 'Test todo',
   description: null,
   is_completed: false,
+  category_id: null,
   created_at: '2026-04-06T00:00:00Z',
   updated_at: '2026-04-06T00:00:00Z',
   ...overrides,
@@ -24,6 +25,7 @@ const createTodo = (overrides: Partial<Todo> = {}): Todo => ({
 
 const onToggle = vi.fn();
 const onDelete = vi.fn();
+const onEdit = vi.fn();
 
 const setupHooks = (
   updateOverrides: Partial<ReturnType<typeof useUpdateTodo>> = {},
@@ -48,48 +50,49 @@ describe('TodoItem', () => {
   beforeEach(() => {
     onToggle.mockReset();
     onDelete.mockReset();
+    onEdit.mockReset();
     setupHooks();
   });
 
   describe('rendering', () => {
     it('renders the todo title', () => {
-      render(<TodoItem todo={createTodo({ title: 'Buy milk' })} />);
+      render(<TodoItem todo={createTodo({ title: 'Buy milk' })} onEdit={onEdit} />);
 
       expect(screen.getByText('Buy milk')).toBeInTheDocument();
     });
 
     it('renders the description when provided', () => {
-      render(<TodoItem todo={createTodo({ description: 'From the shop' })} />);
+      render(<TodoItem todo={createTodo({ description: 'From the shop' })} onEdit={onEdit} />);
 
       expect(screen.getByText('From the shop')).toBeInTheDocument();
     });
 
     it('does not render description when null', () => {
-      render(<TodoItem todo={createTodo({ description: null })} />);
+      render(<TodoItem todo={createTodo({ description: null })} onEdit={onEdit} />);
 
       expect(screen.queryByText('From the shop')).not.toBeInTheDocument();
     });
 
     it('renders the checkbox unchecked when todo is not completed', () => {
-      render(<TodoItem todo={createTodo({ is_completed: false })} />);
+      render(<TodoItem todo={createTodo({ is_completed: false })} onEdit={onEdit} />);
 
       expect(screen.getByRole('checkbox')).not.toBeChecked();
     });
 
     it('renders the checkbox checked when todo is completed', () => {
-      render(<TodoItem todo={createTodo({ is_completed: true })} />);
+      render(<TodoItem todo={createTodo({ is_completed: true })} onEdit={onEdit} />);
 
       expect(screen.getByRole('checkbox')).toBeChecked();
     });
 
     it('renders the delete button', () => {
-      render(<TodoItem todo={createTodo()} />);
+      render(<TodoItem todo={createTodo()} onEdit={onEdit} />);
 
       expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
     });
 
     it('applies line-through style on title when todo is completed', () => {
-      render(<TodoItem todo={createTodo({ title: 'Done task', is_completed: true })} />);
+      render(<TodoItem todo={createTodo({ title: 'Done task', is_completed: true })} onEdit={onEdit} />);
 
       expect(screen.getByText('Done task')).toHaveClass('line-through');
     });
@@ -99,7 +102,7 @@ describe('TodoItem', () => {
     it('calls onToggle with toggled is_completed when checkbox is clicked on an incomplete todo', async () => {
       const user = userEvent.setup();
       const todo = createTodo({ id: 42, is_completed: false });
-      render(<TodoItem todo={todo} />);
+      render(<TodoItem todo={todo} onEdit={onEdit} />);
 
       await user.click(screen.getByRole('checkbox'));
 
@@ -110,7 +113,7 @@ describe('TodoItem', () => {
     it('calls onToggle with toggled is_completed when checkbox is clicked on a completed todo', async () => {
       const user = userEvent.setup();
       const todo = createTodo({ id: 7, is_completed: true });
-      render(<TodoItem todo={todo} />);
+      render(<TodoItem todo={todo} onEdit={onEdit} />);
 
       await user.click(screen.getByRole('checkbox'));
 
@@ -121,7 +124,7 @@ describe('TodoItem', () => {
     it('calls onDelete with the todo id when the delete button is clicked', async () => {
       const user = userEvent.setup();
       const todo = createTodo({ id: 42 });
-      render(<TodoItem todo={todo} />);
+      render(<TodoItem todo={todo} onEdit={onEdit} />);
 
       await user.click(screen.getByRole('button', { name: /delete/i }));
 
@@ -133,7 +136,7 @@ describe('TodoItem', () => {
   describe('pending state', () => {
     it('disables the checkbox and delete button when an update is pending', () => {
       setupHooks({ isPending: true });
-      render(<TodoItem todo={createTodo()} />);
+      render(<TodoItem todo={createTodo()} onEdit={onEdit} />);
 
       expect(screen.getByRole('checkbox')).toBeDisabled();
       expect(screen.getByRole('button', { name: /delete/i })).toBeDisabled();
@@ -141,7 +144,7 @@ describe('TodoItem', () => {
 
     it('disables the checkbox and delete button when a delete is pending', () => {
       setupHooks({}, { isPending: true });
-      render(<TodoItem todo={createTodo()} />);
+      render(<TodoItem todo={createTodo()} onEdit={onEdit} />);
 
       expect(screen.getByRole('checkbox')).toBeDisabled();
       expect(screen.getByRole('button', { name: /delete/i })).toBeDisabled();
@@ -150,7 +153,7 @@ describe('TodoItem', () => {
     it('does not call onToggle when the checkbox is clicked while pending', async () => {
       const user = userEvent.setup();
       setupHooks({ isPending: true });
-      render(<TodoItem todo={createTodo()} />);
+      render(<TodoItem todo={createTodo()} onEdit={onEdit} />);
 
       await user.click(screen.getByRole('checkbox'));
 
@@ -160,7 +163,7 @@ describe('TodoItem', () => {
     it('does not call onDelete when the delete button is clicked while pending', async () => {
       const user = userEvent.setup();
       setupHooks({}, { isPending: true });
-      render(<TodoItem todo={createTodo()} />);
+      render(<TodoItem todo={createTodo()} onEdit={onEdit} />);
 
       await user.click(screen.getByRole('button', { name: /delete/i }));
 

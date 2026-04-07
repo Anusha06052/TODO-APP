@@ -1,17 +1,40 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { useCreateTodo } from '@/hooks/useTodos';
-import type { CreateTodoDto } from '@/types';
+import { useGetCategories } from '@/hooks/useCategories';
+import { useCreateTodo, useUpdateTodo } from '@/hooks/useTodos';
+import type { CreateTodoDto, Todo } from '@/types';
 
 interface TodoFormProps {
+  editingTodo?: Todo | null;
   onSuccess?: () => void;
+  onCancel?: () => void;
 }
 
-export const TodoForm = ({ onSuccess }: TodoFormProps) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+export const TodoForm = ({ editingTodo, onSuccess, onCancel }: TodoFormProps) => {
+  const isEditing = editingTodo != null;
 
-  const { mutate: createTodo, isPending, isError, error } = useCreateTodo();
+  const [title, setTitle] = useState(editingTodo?.title ?? '');
+  const [description, setDescription] = useState(editingTodo?.description ?? '');
+  const [categoryId, setCategoryId] = useState<number | null>(editingTodo?.category_id ?? null);
+
+  useEffect(() => {
+    setTitle(editingTodo?.title ?? '');
+    setDescription(editingTodo?.description ?? '');
+    setCategoryId(editingTodo?.category_id ?? null);
+  }, [editingTodo]);
+
+  const { mutate: createTodo, isPending: isCreating, isError: isCreateError, error: createError } = useCreateTodo();
+  const { mutate: updateTodo, isPending: isUpdating, isError: isUpdateError, error: updateError } = useUpdateTodo();
+
+  const isPending = isCreating || isUpdating;
+  const isError = isCreateError || isUpdateError;
+  const error = createError ?? updateError;
+
+  const {
+    data: categories,
+    isLoading: isCategoriesLoading,
+    isError: isCategoriesError,
+  } = useGetCategories();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -19,18 +42,34 @@ export const TodoForm = ({ onSuccess }: TodoFormProps) => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return;
 
-    const payload: CreateTodoDto = {
-      title: trimmedTitle,
-      description: description.trim() || null,
-    };
+    if (isEditing) {
+      updateTodo(
+        {
+          id: editingTodo.id,
+          payload: {
+            title: trimmedTitle,
+            description: description.trim() || null,
+            category_id: categoryId,
+          },
+        },
+        { onSuccess: () => { onSuccess?.(); } },
+      );
+    } else {
+      const payload: CreateTodoDto = {
+        title: trimmedTitle,
+        description: description.trim() || null,
+        category_id: categoryId,
+      };
 
-    createTodo(payload, {
-      onSuccess: () => {
-        setTitle('');
-        setDescription('');
-        onSuccess?.();
-      },
-    });
+      createTodo(payload, {
+        onSuccess: () => {
+          setTitle('');
+          setDescription('');
+          setCategoryId(null);
+          onSuccess?.();
+        },
+      });
+    }
   };
 
   const errorMessage =
@@ -69,19 +108,59 @@ export const TodoForm = ({ onSuccess }: TodoFormProps) => {
         />
       </div>
 
+      <div className="flex flex-col gap-1">
+        <label htmlFor="todo-category" className="text-sm font-medium text-gray-700">
+          Category
+        </label>
+        {isCategoriesError ? (
+          <p role="alert" className="text-sm text-red-600">
+            Failed to load categories.
+          </p>
+        ) : (
+          <select
+            id="todo-category"
+            value={categoryId ?? ''}
+            onChange={(e) =>
+              setCategoryId(e.target.value ? Number(e.target.value) : null)
+            }
+            disabled={isPending || isCategoriesLoading}
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+          >
+            <option value="">No category</option>
+            {categories?.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
       {errorMessage && (
         <p role="alert" className="text-sm text-red-600">
           {errorMessage}
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={isPending || !title.trim()}
-        className="self-end rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {isPending ? 'Adding…' : 'Add Todo'}
-      </button>
+      <div className="flex justify-end gap-2">
+        {isEditing && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={isPending || !title.trim()}
+          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isPending ? (isEditing ? 'Saving…' : 'Adding…') : isEditing ? 'Save Changes' : 'Add Todo'}
+        </button>
+      </div>
     </form>
   );
 };

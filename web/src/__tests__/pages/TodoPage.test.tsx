@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import {
   useCreateTodo,
@@ -8,10 +9,21 @@ import {
   useGetTodos,
   useUpdateTodo,
 } from '@/hooks/useTodos';
+import { useGetCategories } from '@/hooks/useCategories';
 import TodoPage from '@/pages/TodoPage';
 import type { Todo } from '@/types';
 
 vi.mock('@/hooks/useTodos');
+vi.mock('@/hooks/useCategories');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const renderPage = () =>
+  render(
+    <MemoryRouter>
+      <TodoPage />
+    </MemoryRouter>,
+  );
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
@@ -20,6 +32,7 @@ const createTodo = (overrides: Partial<Todo> = {}): Todo => ({
   title: 'Test todo',
   description: null,
   is_completed: false,
+  category_id: null,
   created_at: '2026-04-06T00:00:00Z',
   updated_at: '2026-04-06T00:00:00Z',
   ...overrides,
@@ -66,11 +79,21 @@ const mockUseDeleteTodo = (overrides: Partial<ReturnType<typeof useDeleteTodo>> 
   } as ReturnType<typeof useDeleteTodo>);
 };
 
+const mockUseGetCategories = (overrides: Partial<ReturnType<typeof useGetCategories>> = {}) => {
+  vi.mocked(useGetCategories).mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    ...overrides,
+  } as ReturnType<typeof useGetCategories>);
+};
+
 const setupDefaultMocks = () => {
   mockUseGetTodos();
   mockUseCreateTodo();
   mockUseUpdateTodo();
   mockUseDeleteTodo();
+  mockUseGetCategories();
 };
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -85,28 +108,36 @@ describe('TodoPage', () => {
 
   describe('page structure', () => {
     it('renders the page heading', () => {
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('heading', { name: /my todos/i })).toBeInTheDocument();
     });
 
     it('renders the "Add a new todo" landmark section', () => {
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('region', { name: /add a new todo/i })).toBeInTheDocument();
     });
 
     it('renders the todo list landmark section', () => {
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('region', { name: /todo list/i })).toBeInTheDocument();
     });
 
     it('renders the title input and submit button inside the form section', () => {
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /add todo/i })).toBeInTheDocument();
+    });
+
+    it('renders a "Manage categories" link pointing to /categories', () => {
+      renderPage();
+
+      const link = screen.getByRole('link', { name: /manage categories/i });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/categories');
     });
   });
 
@@ -116,7 +147,7 @@ describe('TodoPage', () => {
     it('renders a loading indicator while todos are being fetched', () => {
       mockUseGetTodos({ isLoading: true });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('status')).toBeInTheDocument();
     });
@@ -124,7 +155,7 @@ describe('TodoPage', () => {
     it('does not render any todo items while loading', () => {
       mockUseGetTodos({ isLoading: true });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
     });
@@ -136,7 +167,7 @@ describe('TodoPage', () => {
     it('renders an error alert when the todos request fails', () => {
       mockUseGetTodos({ isError: true });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
@@ -144,7 +175,7 @@ describe('TodoPage', () => {
     it('still renders the form when the list fails to load', () => {
       mockUseGetTodos({ isError: true });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('button', { name: /add todo/i })).toBeInTheDocument();
     });
@@ -156,7 +187,7 @@ describe('TodoPage', () => {
     it('renders the empty-state message when the todos list is empty', () => {
       mockUseGetTodos({ data: [] });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByText(/no todos yet/i)).toBeInTheDocument();
     });
@@ -173,7 +204,7 @@ describe('TodoPage', () => {
       ];
       mockUseGetTodos({ data: todos });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getAllByRole('listitem')).toHaveLength(3);
     });
@@ -185,7 +216,7 @@ describe('TodoPage', () => {
       ];
       mockUseGetTodos({ data: todos });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByText('Buy milk')).toBeInTheDocument();
       expect(screen.getByText('Walk the dog')).toBeInTheDocument();
@@ -195,7 +226,7 @@ describe('TodoPage', () => {
       const todos = [createTodo({ id: 1, title: 'Done task', is_completed: true })];
       mockUseGetTodos({ data: todos });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('checkbox', { name: /done task/i })).toBeChecked();
     });
@@ -204,7 +235,7 @@ describe('TodoPage', () => {
       const todos = [createTodo({ id: 1, title: 'Pending task', is_completed: false })];
       mockUseGetTodos({ data: todos });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('checkbox', { name: /pending task/i })).not.toBeChecked();
     });
@@ -215,35 +246,35 @@ describe('TodoPage', () => {
   describe('form submission', () => {
     it('calls createTodo mutate with the trimmed title when the form is submitted', async () => {
       const user = userEvent.setup();
-      render(<TodoPage />);
+      renderPage();
 
       await user.type(screen.getByLabelText(/title/i), '  Buy milk  ');
       await user.click(screen.getByRole('button', { name: /add todo/i }));
 
       expect(mockCreateMutate).toHaveBeenCalledOnce();
       expect(mockCreateMutate).toHaveBeenCalledWith(
-        { title: 'Buy milk', description: null },
+        { title: 'Buy milk', description: null, category_id: null },
         expect.any(Object),
       );
     });
 
     it('calls createTodo mutate with both title and description when both are filled', async () => {
       const user = userEvent.setup();
-      render(<TodoPage />);
+      renderPage();
 
       await user.type(screen.getByLabelText(/title/i), 'Buy milk');
       await user.type(screen.getByLabelText(/description/i), '  Whole fat  ');
       await user.click(screen.getByRole('button', { name: /add todo/i }));
 
       expect(mockCreateMutate).toHaveBeenCalledWith(
-        { title: 'Buy milk', description: 'Whole fat' },
+        { title: 'Buy milk', description: 'Whole fat', category_id: null },
         expect.any(Object),
       );
     });
 
     it('does not call createTodo mutate when the title field is empty', async () => {
       const user = userEvent.setup();
-      render(<TodoPage />);
+      renderPage();
 
       await user.keyboard('{Enter}');
 
@@ -252,7 +283,7 @@ describe('TodoPage', () => {
 
     it('disables the form inputs while a create mutation is pending', () => {
       mockUseCreateTodo({ isPending: true, mutate: mockCreateMutate });
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByLabelText(/title/i)).toBeDisabled();
     });
@@ -264,7 +295,7 @@ describe('TodoPage', () => {
         error: new Error('Server error'),
         mutate: mockCreateMutate,
       });
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
@@ -278,7 +309,7 @@ describe('TodoPage', () => {
       const todo = createTodo({ id: 42, title: 'Buy milk', is_completed: false });
       mockUseGetTodos({ data: [todo] });
 
-      render(<TodoPage />);
+      renderPage();
 
       await user.click(screen.getByRole('checkbox', { name: /buy milk/i }));
 
@@ -294,7 +325,7 @@ describe('TodoPage', () => {
       const todo = createTodo({ id: 7, title: 'Done task', is_completed: true });
       mockUseGetTodos({ data: [todo] });
 
-      render(<TodoPage />);
+      renderPage();
 
       await user.click(screen.getByRole('checkbox', { name: /done task/i }));
 
@@ -309,7 +340,7 @@ describe('TodoPage', () => {
       const todo = createTodo({ id: 99, title: 'Buy milk' });
       mockUseGetTodos({ data: [todo] });
 
-      render(<TodoPage />);
+      renderPage();
 
       await user.click(screen.getByRole('button', { name: /delete "buy milk"/i }));
 
@@ -322,7 +353,7 @@ describe('TodoPage', () => {
       const todo = createTodo({ id: 1, title: 'Buy milk' });
       mockUseGetTodos({ data: [todo] });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('checkbox', { name: /buy milk/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /delete "buy milk"/i })).toBeDisabled();
@@ -333,10 +364,11 @@ describe('TodoPage', () => {
       const todo = createTodo({ id: 1, title: 'Buy milk' });
       mockUseGetTodos({ data: [todo] });
 
-      render(<TodoPage />);
+      renderPage();
 
       expect(screen.getByRole('checkbox', { name: /buy milk/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /delete "buy milk"/i })).toBeDisabled();
     });
   });
 });
+
