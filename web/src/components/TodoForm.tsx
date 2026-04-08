@@ -1,17 +1,29 @@
 import { useEffect, useState } from 'react';
 
-import { useGetCategories } from '@/hooks/useCategories';
-import { useCreateTodo, useUpdateTodo } from '@/hooks/useTodos';
-import type { CreateTodoDto, Todo } from '@/types';
+import { useCreateTodo } from '@/hooks/useTodos';
+import type { Category, CreateTodoDto, Todo, UpdateTodoDto } from '@/types';
 
 interface TodoFormProps {
   editingTodo?: Todo | null;
   onSuccess?: () => void;
   onCancel?: () => void;
+  onUpdate?: (id: number, payload: UpdateTodoDto) => void;
+  categories?: Category[];
+  isCategoriesLoading?: boolean;
+  isCategoriesError?: boolean;
 }
 
-export const TodoForm = ({ editingTodo, onSuccess, onCancel }: TodoFormProps) => {
+export const TodoForm = ({
+  editingTodo,
+  onSuccess,
+  onCancel,
+  onUpdate,
+  categories,
+  isCategoriesLoading = false,
+  isCategoriesError = false,
+}: TodoFormProps) => {
   const isEditing = editingTodo != null;
+  const hasCategories = categories !== undefined;
 
   const [title, setTitle] = useState(editingTodo?.title ?? '');
   const [description, setDescription] = useState(editingTodo?.description ?? '');
@@ -23,18 +35,7 @@ export const TodoForm = ({ editingTodo, onSuccess, onCancel }: TodoFormProps) =>
     setCategoryId(editingTodo?.category_id ?? null);
   }, [editingTodo]);
 
-  const { mutate: createTodo, isPending: isCreating, isError: isCreateError, error: createError } = useCreateTodo();
-  const { mutate: updateTodo, isPending: isUpdating, isError: isUpdateError, error: updateError } = useUpdateTodo();
-
-  const isPending = isCreating || isUpdating;
-  const isError = isCreateError || isUpdateError;
-  const error = createError ?? updateError;
-
-  const {
-    data: categories,
-    isLoading: isCategoriesLoading,
-    isError: isCategoriesError,
-  } = useGetCategories();
+  const { mutate: createTodo, isPending, isError, error } = useCreateTodo();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -42,23 +43,23 @@ export const TodoForm = ({ editingTodo, onSuccess, onCancel }: TodoFormProps) =>
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return;
 
-    if (isEditing) {
-      updateTodo(
+    const trimmedDescription = description.trim() || null;
+
+    if (isEditing && onUpdate) {
+      onUpdate(
+        editingTodo.id,
         {
-          id: editingTodo.id,
-          payload: {
-            title: trimmedTitle,
-            description: description.trim() || null,
-            category_id: categoryId,
-          },
+          title: trimmedTitle,
+          description: trimmedDescription,
+          ...(hasCategories && { category_id: categoryId }),
         },
-        { onSuccess: () => { onSuccess?.(); } },
       );
+      onSuccess?.();
     } else {
       const payload: CreateTodoDto = {
         title: trimmedTitle,
-        description: description.trim() || null,
-        category_id: categoryId,
+        description: trimmedDescription,
+        ...(hasCategories && { category_id: categoryId }),
       };
 
       createTodo(payload, {
@@ -108,33 +109,35 @@ export const TodoForm = ({ editingTodo, onSuccess, onCancel }: TodoFormProps) =>
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="todo-category" className="text-sm font-medium text-gray-700">
-          Category
-        </label>
-        {isCategoriesError ? (
-          <p role="alert" className="text-sm text-red-600">
-            Failed to load categories.
-          </p>
-        ) : (
-          <select
-            id="todo-category"
-            value={categoryId ?? ''}
-            onChange={(e) =>
-              setCategoryId(e.target.value ? Number(e.target.value) : null)
-            }
-            disabled={isPending || isCategoriesLoading}
-            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
-          >
-            <option value="">No category</option>
-            {categories?.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
+      {hasCategories && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="todo-category" className="text-sm font-medium text-gray-700">
+            Category
+          </label>
+          {isCategoriesError ? (
+            <p role="alert" className="text-sm text-red-600">
+              Failed to load categories.
+            </p>
+          ) : (
+            <select
+              id="todo-category"
+              value={categoryId ?? ''}
+              onChange={(e) =>
+                setCategoryId(e.target.value ? Number(e.target.value) : null)
+              }
+              disabled={isPending || isCategoriesLoading}
+              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+            >
+              <option value="">No category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {errorMessage && (
         <p role="alert" className="text-sm text-red-600">

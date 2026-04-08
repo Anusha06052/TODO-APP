@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import AsyncClient
 
+from app.models.category import Category
 from app.models.todo import Todo
 
 
@@ -71,7 +72,7 @@ def _execute_result_single(todo: Todo | None) -> MagicMock:
 def _refresh_populates(
     todo_id: int = 1,
     is_completed: bool = False,
-) -> Callable[[Todo], None]:
+) -> Callable[..., None]:
     """Return a ``side_effect`` function for ``mock_db.refresh``.
 
     Because the test environment never hits a real database, server-side
@@ -79,6 +80,12 @@ def _refresh_populates(
     newly created ORM instances.  Attaching this as a ``side_effect`` on the
     mock ``refresh`` call simulates what a real ``session.refresh()`` would
     populate from the database row.
+
+    The inner callable accepts the optional ``attribute_names`` keyword
+    argument forwarded by the repository's category-relationship refresh
+    (``db.refresh(todo, attribute_names=["category"])``).  Any call that
+    includes ``attribute_names`` is treated as a no-op by this helper so that
+    it does not crash while still leaving ``todo.category`` as ``None``.
 
     Args:
         todo_id: The ``id`` to write onto the instance.
@@ -88,11 +95,73 @@ def _refresh_populates(
         Callable: A synchronous callable accepted by ``AsyncMock.side_effect``.
     """
 
-    def _populate(instance: Todo) -> None:
+    def _populate(
+        instance: Todo, attribute_names: list[str] | None = None
+    ) -> None:
+        # Always set server-side defaults on every refresh call.  The
+        # repository calls db.refresh(todo, attribute_names=["category"])
+        # and immediately reads todo.id for logging, so id must be
+        # populated regardless of whether attribute_names is supplied.
         instance.id = todo_id
         instance.is_completed = is_completed
         instance.created_at = FIXED_DT
         instance.updated_at = FIXED_DT
+
+    return _populate
+
+
+def _refresh_populates_with_category(
+    todo_id: int = 1,
+    is_completed: bool = False,
+    category_id: int = 1,
+    category_name: str = "Personal",
+    category_description: str | None = None,
+) -> Callable[..., None]:
+    """Return a ``side_effect`` for ``mock_db.refresh`` that populates both
+    standard server-side fields **and** the ``category`` ORM relationship.
+
+    Handles the two distinct ``refresh`` call signatures emitted by the
+    service / repository during a write:
+
+    * ``db.refresh(todo)`` — plain refresh; sets ``id``, ``is_completed``,
+      ``created_at``, and ``updated_at`` on the instance.
+    * ``db.refresh(todo, attribute_names=["category"])`` — relationship
+      refresh; builds a :class:`~app.models.category.Category` ORM instance
+      with the supplied values and assigns it to ``todo.category``.
+
+    The two signatures are distinguished by the presence of the
+    ``attribute_names`` keyword argument.
+
+    Args:
+        todo_id: The ``id`` to set during the plain refresh.
+        is_completed: The completion flag to set during the plain refresh.
+        category_id: The ``id`` of the synthetic category instance.
+        category_name: The ``name`` of the synthetic category instance.
+        category_description: Optional description for the synthetic category.
+
+    Returns:
+        Callable: A synchronous callable accepted by ``AsyncMock.side_effect``.
+    """
+
+    def _populate(
+        instance: Todo, attribute_names: list[str] | None = None
+    ) -> None:
+        # Always populate server-side defaults on every call so that the
+        # repository's post-refresh logging (id=%d) works correctly even
+        # when the first refresh is an attribute-scoped call.
+        instance.id = todo_id
+        instance.is_completed = is_completed
+        instance.created_at = FIXED_DT
+        instance.updated_at = FIXED_DT
+        if attribute_names is not None:
+            # Relationship refresh: build and attach the category instance.
+            cat = Category()
+            cat.id = category_id
+            cat.name = category_name
+            cat.description = category_description
+            cat.created_at = FIXED_DT
+            cat.updated_at = FIXED_DT
+            instance.category = cat  # type: ignore[union-attr]
 
     return _populate
 
@@ -142,6 +211,49 @@ class TestListTodos:
         assert data[1]["title"] == "Read docs"
         assert data[1]["description"] is None
         assert data[1]["is_completed"] is True
+
+    async def test_list_todos_todo_with_category_includes_nested_category(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+        todo_with_category_factory: Callable[..., Todo],
+    ) -> None:
+        """200 OK — a todo that has an assigned category exposes the nested
+        category object in the response body."""
+        todo = todo_with_category_factory(
+            todo_id=1,
+            title="Categorised task",
+            category_id=2,
+            category_name="Work",
+        )
+        mock_db.execute.return_value = _execute_result_list([todo])
+
+        response = await app_client.get("/todos")
+        data = response.json()
+
+        assert response.status_code == 200
+        assert len(data) == 1
+        assert data[0]["category_id"] == 2
+        assert data[0]["category"]["id"] == 2
+        assert data[0]["category"]["name"] == "Work"
+
+    async def test_list_todos_category_is_null_when_no_category_assigned(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """200 OK — the ``category`` field is ``null`` when the todo has no
+        assigned category."""
+        todo = todo_factory(id=3, title="No category")
+        mock_db.execute.return_value = _execute_result_list([todo])
+
+        response = await app_client.get("/todos")
+        data = response.json()
+
+        assert response.status_code == 200
+        assert data[0]["category"] is None
+        assert data[0]["category_id"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +334,77 @@ class TestCreateTodo:
 
         assert response.status_code == 422
 
+    async def test_create_todo_with_valid_category_id_returns_201_with_category_id(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """201 Created — a valid ``category_id`` is preserved in the response body."""
+        mock_db.refresh.side_effect = _refresh_populates(todo_id=5)
+
+        response = await app_client.post(
+            "/todos",
+            json={"title": "Categorised todo", "category_id": 3},
+        )
+        data = response.json()
+
+        assert response.status_code == 201
+        assert data["title"] == "Categorised todo"
+        assert data["category_id"] == 3
+
+    async def test_create_todo_with_category_id_zero_returns_422(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """422 Unprocessable Entity — ``category_id=0`` violates the ``ge=1``
+        constraint on :class:`~app.schemas.todo.TodoCreate`."""
+        response = await app_client.post(
+            "/todos",
+            json={"title": "Invalid category id", "category_id": 0},
+        )
+
+        assert response.status_code == 422
+
+    async def test_create_todo_with_negative_category_id_returns_422(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """422 Unprocessable Entity — a negative ``category_id`` violates the
+        ``ge=1`` constraint on :class:`~app.schemas.todo.TodoCreate`."""
+        response = await app_client.post(
+            "/todos",
+            json={"title": "Negative cat id", "category_id": -1},
+        )
+
+        assert response.status_code == 422
+
+    async def test_create_todo_category_populated_in_response_when_refreshed(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """201 Created — when the category relationship is populated by the
+        attribute-scoped ``db.refresh`` call, the response includes the fully
+        nested ``category`` object."""
+        mock_db.refresh.side_effect = _refresh_populates_with_category(
+            todo_id=7,
+            category_id=2,
+            category_name="Work",
+        )
+
+        response = await app_client.post(
+            "/todos",
+            json={"title": "Work task", "category_id": 2},
+        )
+        data = response.json()
+
+        assert response.status_code == 201
+        assert data["category_id"] == 2
+        assert data["category"]["id"] == 2
+        assert data["category"]["name"] == "Work"
+
 
 # ---------------------------------------------------------------------------
 # GET /todos/{todo_id}
@@ -262,6 +445,48 @@ class TestGetTodo:
 
         assert response.status_code == 404
         assert "999" in response.json()["detail"]
+
+    async def test_get_todo_with_category_includes_nested_category_object(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+        todo_with_category_factory: Callable[..., Todo],
+    ) -> None:
+        """200 OK — a todo with an assigned category exposes the full nested
+        category object on the ``category`` key."""
+        todo = todo_with_category_factory(
+            todo_id=10,
+            title="Work item",
+            category_id=3,
+            category_name="Work",
+        )
+        mock_db.execute.return_value = _execute_result_single(todo)
+
+        response = await app_client.get("/todos/10")
+        data = response.json()
+
+        assert response.status_code == 200
+        assert data["category_id"] == 3
+        assert data["category"]["id"] == 3
+        assert data["category"]["name"] == "Work"
+
+    async def test_get_todo_category_is_null_when_no_category_assigned(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """200 OK — the ``category`` field is ``null`` when the todo has no
+        assigned category."""
+        todo = todo_factory(id=11, title="No category")
+        mock_db.execute.return_value = _execute_result_single(todo)
+
+        response = await app_client.get("/todos/11")
+        data = response.json()
+
+        assert response.status_code == 200
+        assert data["category"] is None
+        assert data["category_id"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +570,60 @@ class TestUpdateTodo:
 
         assert response.status_code == 200
         assert data["description"] is None
+
+    async def test_update_todo_with_valid_category_id_returns_200(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """200 OK — a valid ``category_id`` in the PATCH body is applied and
+        reflected in the response."""
+        existing = todo_factory(id=7, title="Needs a category")
+        mock_db.execute.return_value = _execute_result_single(existing)
+
+        response = await app_client.patch("/todos/7", json={"category_id": 4})
+        data = response.json()
+
+        assert response.status_code == 200
+        assert data["category_id"] == 4
+
+    async def test_update_todo_category_id_zero_returns_422(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """422 Unprocessable Entity — ``category_id=0`` violates the ``ge=1``
+        constraint on :class:`~app.schemas.todo.TodoUpdate`."""
+        response = await app_client.patch("/todos/1", json={"category_id": 0})
+
+        assert response.status_code == 422
+
+    async def test_update_todo_with_category_response_includes_nested_category(
+        self,
+        app_client: AsyncClient,
+        mock_db: AsyncMock,
+        todo_with_category_factory: Callable[..., Todo],
+    ) -> None:
+        """200 OK — when the existing todo already carries a pre-loaded category
+        relationship, updating another field preserves the nested category in
+        the response (all refresh calls are mocked as no-ops, so the category
+        object set by :func:`todo_with_category_factory` persists)."""
+        existing = todo_with_category_factory(
+            todo_id=8,
+            title="Has category",
+            category_id=5,
+            category_name="Personal",
+        )
+        mock_db.execute.return_value = _execute_result_single(existing)
+
+        response = await app_client.patch("/todos/8", json={"is_completed": True})
+        data = response.json()
+
+        assert response.status_code == 200
+        assert data["is_completed"] is True
+        assert data["category"]["id"] == 5
+        assert data["category"]["name"] == "Personal"
 
 
 # ---------------------------------------------------------------------------

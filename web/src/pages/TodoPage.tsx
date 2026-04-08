@@ -4,14 +4,27 @@ import { Link } from 'react-router-dom';
 
 import { TodoForm } from '@/components/TodoForm';
 import TodoList from '@/components/TodoList';
-import type { Todo } from '@/types';
+import { useGetCategories } from '@/hooks/useCategories';
+import { useUpdateTodo } from '@/hooks/useTodos';
+import type { Todo, UpdateTodoDto } from '@/types';
 
 const TodoPage = () => {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
 
+  const { mutate: updateTodo } = useUpdateTodo();
+  const {
+    data: categories,
+    isLoading: isCategoriesLoading,
+    isError: isCategoriesError,
+  } = useGetCategories();
+
   const handleEdit = (todo: Todo) => {
     setEditingTodo(todo);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleUpdate = (id: number, payload: UpdateTodoDto) => {
+    updateTodo({ id, payload });
   };
 
   const handleFormSuccess = () => {
@@ -47,6 +60,10 @@ const TodoPage = () => {
           editingTodo={editingTodo}
           onSuccess={handleFormSuccess}
           onCancel={handleCancel}
+          onUpdate={handleUpdate}
+          categories={categories}
+          isCategoriesLoading={isCategoriesLoading}
+          isCategoriesError={isCategoriesError}
         />
       </section>
 

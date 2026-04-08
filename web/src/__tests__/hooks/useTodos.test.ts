@@ -22,6 +22,7 @@ const createTodo = (overrides: Partial<Todo> = {}): Todo => ({
   title: 'Test todo',
   description: null,
   is_completed: false,
+  category_id: null,
   created_at: '2026-04-06T00:00:00Z',
   updated_at: '2026-04-06T00:00:00Z',
   ...overrides,
