@@ -284,7 +284,7 @@ class TestCreateTodo:
 
         await service.create_todo(TodoCreate(title="Refresh me"))
 
-        mock_repo.db.refresh.assert_called_once_with(created)
+        mock_repo.db.refresh.assert_any_call(created)
 
     async def test_commit_called_before_refresh(
         self,
@@ -295,12 +295,12 @@ class TestCreateTodo:
         """create_todo must commit before refreshing to see server-side defaults."""
         call_order: list[str] = []
         mock_repo.db.commit.side_effect = lambda: call_order.append("commit")
-        mock_repo.db.refresh.side_effect = lambda _: call_order.append("refresh")
+        mock_repo.db.refresh.side_effect = lambda *a, **kw: call_order.append("refresh")
         mock_repo.create.return_value = todo_factory()
 
         await service.create_todo(TodoCreate(title="Order matters"))
 
-        assert call_order == ["commit", "refresh"]
+        assert call_order == ["commit", "refresh", "refresh"]
 
     async def test_create_todo_with_description(
         self,
@@ -329,6 +329,70 @@ class TestCreateTodo:
         await service.create_todo(payload)
 
         mock_repo.create.assert_called_once_with(payload)
+
+    async def test_create_todo_with_category_id_forwards_it_to_repo(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """create_todo passes category_id through to repo.create unchanged."""
+        mock_repo.create.return_value = todo_factory()
+
+        payload = TodoCreate(title="Categorised", category_id=3)
+        await service.create_todo(payload)
+
+        mock_repo.create.assert_called_once_with(payload)
+        forwarded: TodoCreate = mock_repo.create.call_args[0][0]
+        assert forwarded.category_id == 3
+
+    async def test_create_todo_without_category_id_accepted(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """create_todo works when category_id is omitted (defaults to None)."""
+        mock_repo.create.return_value = todo_factory()
+
+        payload = TodoCreate(title="No category")
+        await service.create_todo(payload)
+
+        forwarded: TodoCreate = mock_repo.create.call_args[0][0]
+        assert forwarded.category_id is None
+
+    async def test_create_todo_refreshes_category_relationship(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """create_todo calls db.refresh with attribute_names=["category"] to
+        eagerly reload the ORM relationship after commit."""
+        created = todo_factory(id=5)
+        mock_repo.create.return_value = created
+
+        await service.create_todo(TodoCreate(title="Category refresh"))
+
+        mock_repo.db.refresh.assert_any_call(created, attribute_names=["category"])
+
+    async def test_create_todo_category_refresh_called_after_initial_refresh(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """The plain db.refresh must precede the category-attribute refresh."""
+        created = todo_factory(id=5)
+        mock_repo.create.return_value = created
+
+        await service.create_todo(TodoCreate(title="Refresh order"))
+
+        refresh_calls = mock_repo.db.refresh.call_args_list
+        # First call: plain refresh with no keyword arguments.
+        assert refresh_calls[0] == call(created)
+        # Second call: category relationship refresh.
+        assert refresh_calls[1] == call(created, attribute_names=["category"])
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +506,7 @@ class TestUpdateTodo:
         await service.update_todo(1, TodoUpdate(title="After"))
 
         # Must refresh the *updated* instance, not the original.
-        mock_repo.db.refresh.assert_called_once_with(updated)
+        mock_repo.db.refresh.assert_any_call(updated)
 
     async def test_commit_called_before_refresh(
         self,
@@ -453,7 +517,7 @@ class TestUpdateTodo:
         """update_todo must commit before refreshing to observe persisted changes."""
         call_order: list[str] = []
         mock_repo.db.commit.side_effect = lambda: call_order.append("commit")
-        mock_repo.db.refresh.side_effect = lambda _: call_order.append("refresh")
+        mock_repo.db.refresh.side_effect = lambda *a, **kw: call_order.append("refresh")
 
         original = todo_factory(id=1)
         mock_repo.get_by_id.return_value = original
@@ -461,7 +525,7 @@ class TestUpdateTodo:
 
         await service.update_todo(1, TodoUpdate(is_completed=True))
 
-        assert call_order == ["commit", "refresh"]
+        assert call_order == ["commit", "refresh", "refresh"]
 
     async def test_does_not_call_repo_update_when_todo_not_found(
         self,
@@ -510,6 +574,81 @@ class TestUpdateTodo:
         _, call_data = mock_repo.update.call_args.args
         assert call_data is data
         assert call_data.model_fields_set == {"is_completed"}
+
+    async def test_update_todo_with_category_id_forwards_it_to_repo(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """update_todo forwards a new category_id to repo.update unchanged."""
+        original = todo_factory(id=4)
+        mock_repo.get_by_id.return_value = original
+        mock_repo.update.return_value = original
+
+        data = TodoUpdate(category_id=7)
+        await service.update_todo(4, data)
+
+        _, call_data = mock_repo.update.call_args.args
+        assert call_data is data
+        assert call_data.category_id == 7
+
+    async def test_update_todo_category_id_none_clears_assignment_in_payload(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """Passing category_id=None in the payload unassigns the category;
+        the value is forwarded as-is so the repository can apply it."""
+        original = todo_factory(id=4)
+        mock_repo.get_by_id.return_value = original
+        mock_repo.update.return_value = original
+
+        data = TodoUpdate.model_validate({"category_id": None})
+        await service.update_todo(4, data)
+
+        _, call_data = mock_repo.update.call_args.args
+        assert call_data is data
+        assert call_data.category_id is None
+        assert "category_id" in call_data.model_fields_set
+
+    async def test_update_todo_refreshes_category_relationship(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """update_todo calls db.refresh with attribute_names=["category"] to
+        eagerly reload the ORM relationship after commit."""
+        original = todo_factory(id=2)
+        updated = todo_factory(id=2, title="Updated")
+        mock_repo.get_by_id.return_value = original
+        mock_repo.update.return_value = updated
+
+        await service.update_todo(2, TodoUpdate(title="Updated"))
+
+        mock_repo.db.refresh.assert_any_call(updated, attribute_names=["category"])
+
+    async def test_update_todo_category_refresh_called_after_initial_refresh(
+        self,
+        service: TodoService,
+        mock_repo: MagicMock,
+        todo_factory: Callable[..., Todo],
+    ) -> None:
+        """The plain db.refresh must precede the category-attribute refresh on update."""
+        original = todo_factory(id=2)
+        updated = todo_factory(id=2, title="Updated")
+        mock_repo.get_by_id.return_value = original
+        mock_repo.update.return_value = updated
+
+        await service.update_todo(2, TodoUpdate(title="Updated"))
+
+        refresh_calls = mock_repo.db.refresh.call_args_list
+        # First call: plain refresh with no keyword arguments.
+        assert refresh_calls[0] == call(updated)
+        # Second call: category relationship refresh.
+        assert refresh_calls[1] == call(updated, attribute_names=["category"])
 
 
 # ---------------------------------------------------------------------------

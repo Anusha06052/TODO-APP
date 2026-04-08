@@ -69,7 +69,7 @@ def mock_db() -> AsyncMock:
 
     # Simulate the database assigning a primary key after flush + refresh so
     # that repository logging ("id=%d") receives an integer, not None.
-    async def _default_refresh(instance: object) -> None:
+    async def _default_refresh(instance: object, **_kwargs: object) -> None:
         if getattr(instance, "id", None) is None:
             instance.id = 1  # type: ignore[union-attr]
 
@@ -377,7 +377,7 @@ class TestCreate:
         async def flush_side_effect() -> None:
             call_order.append("flush")
 
-        async def refresh_side_effect(instance: Todo) -> None:
+        async def refresh_side_effect(instance: Todo, **_kwargs: object) -> None:
             # Set id so the post-refresh logger.debug("%d") call succeeds.
             if getattr(instance, "id", None) is None:
                 instance.id = 1
@@ -583,7 +583,7 @@ class TestUpdate:
 
         await repo.update(todo, data)
 
-        mock_db.refresh.assert_awaited_once_with(todo)
+        mock_db.refresh.assert_awaited_once_with(todo, attribute_names=["category"])
 
     async def test_flush_called_before_refresh(
         self,
@@ -599,7 +599,7 @@ class TestUpdate:
         async def flush_side_effect() -> None:
             call_order.append("flush")
 
-        async def refresh_side_effect(_: Todo) -> None:
+        async def refresh_side_effect(_: Todo, **_kwargs: object) -> None:
             call_order.append("refresh")
 
         mock_db.flush.side_effect = flush_side_effect
